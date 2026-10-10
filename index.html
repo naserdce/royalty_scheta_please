@@ -138,21 +138,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
           <span class="state" id="s-data">Excel с цифрами по городам</span>
         </label>
       </div>
-      <div class="drop">
-        <span class="lbl">Реквизиты <span class="muted">— если в отдельном файле</span></span>
-        <label class="zone data" id="z-req">
-          <input type="file" id="f-req" accept=".xlsx">
-          <span class="fname"><span class="pick">Выберите файл</span> или перетащите сюда</span>
-          <span class="state" id="s-req">Excel: город и данные плательщика</span>
-        </label>
-      </div>
     </div>
     <div class="info">
       <b>Требования к файлам</b>
       <ul>
         <li>Файл данных, лист «Workbook»: строка с заголовками, колонка «Город», затем «Роялти», «Ролики», «СМС», «Сумма платежа», «Номер счета».</li>
         <li>Колонки правее «Номера счета» — дополнительные услуги. В счёт попадают только заполненные суммы больше нуля.</li>
-        <li>Реквизиты: колонка A — город, колонка B — данные плательщика. Это лист «Данные ЮЛ» в файле данных или отдельный файл.</li>
+        <li>Реквизиты: колонка A — город, колонка B — данные плательщика. Это лист «Данные ЮЛ» в файле данных.</li>
         <li>Шаблон: метки в двойных фигурных скобках, например <span class="num">{{numberDocument}}</span>. Период и подпись НДС программа меняет сама.</li>
       </ul>
     </div>
@@ -660,7 +652,7 @@ async function onFile(id, file){
   }
   $('#result').hidden = true; render();
 }
-['tpl','data','req'].forEach(id => {
+['tpl','data'].forEach(id => {
   const z = $('#z-' + id), inp = $('#f-' + id);
   inp.addEventListener('change', () => { onFile(id, inp.files[0]); inp.value = ''; });
   ['dragenter','dragover'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add('over'); }));
