@@ -1,0 +1,716 @@
+
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Генерация счетов</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one working column, four numbered steps top to bottom — files, parameters, city check, result. */
+:root{
+  --bg:#141316; --panel:#201f23; --well:#19181b; --line:#35323b; --fg:#eeedf0; --muted:#9d99a6;
+  --accent:#c8125f; --accent-fg:#fff; --ok:#3fce7b; --warn:#f0a93b; --bad:#ff7070;
+  --info-bg:#1d2852; --info-fg:#86a8ff;
+  --font:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){
+  --bg:#f4f3f6; --panel:#ffffff; --well:#f1eff3; --line:#dbd8e0; --fg:#1c1a20; --muted:#696570;
+  --accent:#c8125f; --accent-fg:#fff; --ok:#11804a; --warn:#935d00; --bad:#c22f2a;
+  --info-bg:#e7ecff; --info-fg:#2646b4; color-scheme:light } }
+:root[data-theme="light"]{
+  --bg:#f4f3f6; --panel:#ffffff; --well:#f1eff3; --line:#dbd8e0; --fg:#1c1a20; --muted:#696570;
+  --accent:#c8125f; --accent-fg:#fff; --ok:#11804a; --warn:#935d00; --bad:#c22f2a;
+  --info-bg:#e7ecff; --info-fg:#2646b4; color-scheme:light }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:28px 64px}
+.wrap{max-width:900px;margin-inline:auto;display:flex;flex-direction:column;gap:20px}
+header h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--muted);max-width:62ch}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:16px}
+h2{font-size:17px;font-weight:600;margin:0;display:flex;gap:10px;align-items:baseline}
+h2 .n{color:var(--accent);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:13px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px}
+.tabs button{flex:1 1 150px;border-color:transparent;background:transparent;color:var(--muted);font-weight:500;padding:11px 14px}
+.tabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.drops{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.drop{display:flex;flex-direction:column;gap:6px;min-width:0}
+.drop>span.lbl{font-weight:500}
+.zone{border:1.5px dashed var(--line);border-radius:12px;background:var(--well);padding:18px 14px;min-height:108px;
+  display:flex;flex-direction:column;gap:4px;justify-content:center;align-items:center;text-align:center;cursor:pointer;transition:border-color .15s}
+.zone:hover,.zone.over{border-color:var(--accent)}
+.zone:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.zone input{position:absolute;opacity:0;width:1px;height:1px}
+.zone .pick{color:var(--accent);font-weight:600}
+.zone.data .pick{color:var(--ok)}
+.zone .fname{font-weight:500;overflow-wrap:anywhere}
+.zone.done{border-style:solid}
+.zone .state{font-size:13px;color:var(--muted)}
+.zone .state.err{color:var(--bad)} .zone .state.good{color:var(--ok)}
+
+.info{background:var(--info-bg);color:var(--info-fg);border-radius:12px;padding:14px 16px;font-size:14px}
+.info b{font-weight:600} .info ul{margin:6px 0 0;padding-left:18px} .info li{margin-block:2px}
+.note{border-left:3px solid var(--warn);background:var(--well);padding:10px 14px;border-radius:0 10px 10px 0;font-size:14px}
+.note.bad{border-color:var(--bad)}
+
+.params{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field>label,.field>.lbl{font-size:13px;color:var(--muted)}
+.inline{display:flex;gap:8px;flex-wrap:wrap}
+input[type=text],input[type=date],input[type=number],select,textarea{font:inherit;color:var(--fg);background:var(--well);border:1px solid var(--line);
+  border-radius:9px;padding:9px 11px;min-width:0;width:100%}
+textarea{resize:vertical;min-height:64px}
+select{width:auto;flex:1 1 130px} #year{flex:0 1 96px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.check{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.check input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--accent);flex:none}
+details{border:1px solid var(--line);border-radius:10px;background:var(--well)}
+summary{cursor:pointer;padding:11px 14px;font-weight:500}
+details .titles{padding:0 14px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--well);color:var(--fg);padding:9px 14px}
+button:hover:not(:disabled){border-color:var(--muted)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600;padding:13px 22px;font-size:16px}
+button.primary:hover:not(:disabled){filter:brightness(1.1);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border-radius:999px;padding:6px 13px;font-size:14px}
+.chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:grid;grid-template-columns:auto minmax(0,1.4fr) auto minmax(0,1.5fr) auto;gap:12px;align-items:center;padding:11px 14px;border-top:1px solid var(--line)}
+.list>.row:first-child{border-top:0}
+.row input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+.who{display:flex;flex-direction:column;min-width:0}
+.who b{font-weight:600;overflow-wrap:anywhere} .who span{font-size:13px;color:var(--muted)}
+.pills{display:flex;gap:6px;flex-wrap:wrap;min-width:0}
+.pill{font-size:13px;border-radius:999px;padding:3px 10px;border:1px solid currentColor;overflow-wrap:anywhere}
+.pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
+.edit{background:var(--well);border-top:1px solid var(--line);padding:16px 14px;display:flex;flex-direction:column;gap:14px}
+.lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.empty{color:var(--muted);padding:6px 0}
+@media (max-width:640px){
+  .row{grid-template-columns:auto minmax(0,1fr) auto}
+  .row .pills{grid-column:2 / -1;grid-row:2}
+  .row .more{grid-column:2 / -1;grid-row:3;justify-self:start}
+}
+.result h3{margin:0;font-size:16px;font-weight:600}
+.result ul{margin:6px 0 0;padding-left:18px} .result li{margin-block:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Генерация счетов</h1>
+    <p>Загрузите шаблон счёта и таблицу месяца. Программа соберёт отдельный счёт на каждый город и покажет, где нужна ваша проверка. Файлы обрабатываются в браузере и никуда не отправляются.</p>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Валюта счетов">
+    <button role="tab" id="tab-rub" aria-selected="true">Рубли</button>
+    <button role="tab" id="tab-kz" aria-selected="false">Для Казахстана</button>
+  </div>
+
+  <section aria-labelledby="h-files">
+    <h2 id="h-files"><span class="n">1</span>Файлы</h2>
+    <div class="drops">
+      <div class="drop">
+        <span class="lbl">Шаблон документа</span>
+        <label class="zone" id="z-tpl">
+          <input type="file" id="f-tpl" accept=".docx">
+          <span class="fname"><span class="pick">Выберите файл</span> или перетащите сюда</span>
+          <span class="state" id="s-tpl">Word, .docx</span>
+        </label>
+      </div>
+      <div class="drop">
+        <span class="lbl">Файл данных</span>
+        <label class="zone data" id="z-data">
+          <input type="file" id="f-data" accept=".xlsx">
+          <span class="fname"><span class="pick">Выберите файл</span> или перетащите сюда</span>
+          <span class="state" id="s-data">Excel с цифрами по городам</span>
+        </label>
+      </div>
+      <div class="drop">
+        <span class="lbl">Реквизиты <span class="muted">— если в отдельном файле</span></span>
+        <label class="zone data" id="z-req">
+          <input type="file" id="f-req" accept=".xlsx">
+          <span class="fname"><span class="pick">Выберите файл</span> или перетащите сюда</span>
+          <span class="state" id="s-req">Excel: город и данные плательщика</span>
+        </label>
+      </div>
+    </div>
+    <div class="info">
+      <b>Требования к файлам</b>
+      <ul>
+        <li>Файл данных, лист «Workbook»: строка с заголовками, колонка «Город», затем «Роялти», «Ролики», «СМС», «Сумма платежа», «Номер счета».</li>
+        <li>Колонки правее «Номера счета» — дополнительные услуги. В счёт попадают только заполненные суммы больше нуля.</li>
+        <li>Реквизиты: колонка A — город, колонка B — данные плательщика. Это лист «Данные ЮЛ» в файле данных или отдельный файл.</li>
+        <li>Шаблон: метки в двойных фигурных скобках, например <span class="num">{{numberDocument}}</span>. Период и подпись НДС программа меняет сама.</li>
+      </ul>
+    </div>
+    <div id="tpl-notes"></div>
+  </section>
+
+  <section aria-labelledby="h-params">
+    <h2 id="h-params"><span class="n">2</span>Параметры</h2>
+    <div class="params">
+      <div class="field">
+        <span class="lbl">Месяц счёта</span>
+        <div class="inline">
+          <select id="month" aria-label="Месяц"></select>
+          <input type="number" id="year" aria-label="Год" min="2020" max="2100" step="1">
+        </div>
+        <label class="check small"><input type="checkbox" id="use-period" checked><span>Подставлять период в счёт: <span class="num" id="period-view"></span></span></label>
+      </div>
+      <div class="field">
+        <label for="doc-date">Дата в документе (необязательно)</label>
+        <input type="date" id="doc-date">
+        <span class="small muted">Если не указана, будет сегодняшняя дата.</span>
+      </div>
+      <div class="field">
+        <span class="lbl">Расчёт</span>
+        <label class="check"><input type="checkbox" id="vat" checked><span>Включить расчёт НДС (7%)</span></label>
+        <label class="check"><input type="checkbox" id="extras" checked><span>Добавлять дополнительные услуги в счёт</span></label>
+      </div>
+    </div>
+    <div class="note" id="kz-note" hidden>Счета в тенге: суммы берутся из таблицы как есть и пишутся целыми числами, слово «Рублей» в шаблоне меняется на «Тенге», НДС округляется до целого тенге.</div>
+    <details id="titles-box" hidden>
+      <summary>Названия строк в счёте</summary>
+      <div class="titles" id="titles"></div>
+    </details>
+  </section>
+
+  <section aria-labelledby="h-check">
+    <h2 id="h-check"><span class="n">3</span>Проверка городов</h2>
+    <div id="check-empty" class="empty">Здесь появится список городов из файла данных: готовые счета и те, где нужно ваше решение — нет реквизитов, сумма строк не сходится с суммой платежа или сумма нулевая.</div>
+    <div id="check-body" hidden>
+      <div class="chips" id="chips"></div>
+      <div class="list" id="list" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-out">
+    <h2 id="h-out"><span class="n">4</span>Результат</h2>
+    <div class="actions">
+      <button class="primary" id="go" disabled>Сгенерировать счета</button>
+      <span class="muted" id="go-hint">Загрузите шаблон и файл данных.</span>
+    </div>
+    <div class="result" id="result" hidden></div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+'use strict';
+const VAT_RATE = 7;
+const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const state = { tpl:null, cols:[], cities:[], reqOwn:null, reqEmbedded:null, open:new Set(), filter:'all', titles:{}, zip:null, kz:false };
+try { state.titles = JSON.parse(localStorage.getItem('invoice-titles') || '{}') || {}; } catch(e) {}
+
+/* ---------- numbers and words ---------- */
+const round2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+function parseNum(v){
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  if (v == null) return 0;
+  const s = String(v).replace(/[\s\u00A0]/g,'').replace(',', '.').replace(/[^0-9.\-]/g,'');
+  const n = parseFloat(s); return isFinite(n) ? n : 0;
+}
+function fmtFull(n){
+  const [i,f] = Math.abs(round2(n)).toFixed(2).split('.');
+  return (n < 0 ? '-' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0') + ',' + f;
+}
+// Tenge invoices show whole numbers only.
+function fmt(n){ return state.kz ? fmtFull(Math.round(n)).slice(0, -3) : fmtFull(n); }
+function plural(n, one, few, many){
+  const a = n % 100, b = n % 10;
+  if (a > 10 && a < 20) return many;
+  if (b === 1) return one;
+  if (b >= 2 && b <= 4) return few;
+  return many;
+}
+function triad(n, fem){
+  const H = ['','сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот'];
+  const T = ['','','двадцать','тридцать','сорок','пятьдесят','шестьдесят','семьдесят','восемьдесят','девяносто'];
+  const U = ['','один','два','три','четыре','пять','шесть','семь','восемь','девять','десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать','шестнадцать','семнадцать','восемнадцать','девятнадцать'];
+  const out = [];
+  if (H[Math.floor(n/100)]) out.push(H[Math.floor(n/100)]);
+  const r = n % 100;
+  if (r < 20) { if (r) out.push(fem && r === 1 ? 'одна' : fem && r === 2 ? 'две' : U[r]); }
+  else { out.push(T[Math.floor(r/10)]); const u = r % 10; if (u) out.push(fem && u === 1 ? 'одна' : fem && u === 2 ? 'две' : U[u]); }
+  return out.join(' ');
+}
+function rublesInWords(amount){
+  let kop = state.kz ? Math.round(Math.abs(amount)) * 100 : Math.round(Math.abs(amount) * 100);
+  const rub = Math.floor(kop / 100); kop = kop % 100;
+  const groups = [
+    [null,null,null,false],
+    ['тысяча','тысячи','тысяч',true],
+    ['миллион','миллиона','миллионов',false],
+    ['миллиард','миллиарда','миллиардов',false]
+  ];
+  const parts = []; let rest = rub, g = 0;
+  while (rest > 0 && g < groups.length){
+    const t = rest % 1000;
+    if (t){ const w = triad(t, groups[g][3]); parts.unshift(g ? w + ' ' + plural(t, groups[g][0], groups[g][1], groups[g][2]) : w); }
+    rest = Math.floor(rest / 1000); g++;
+  }
+  let words = parts.join(' ') || 'ноль';
+  words = words.charAt(0).toUpperCase() + words.slice(1);
+  if (state.kz) return words + ' тенге';
+  return words + ' ' + plural(rub,'рубль','рубля','рублей') + ' ' + String(kop).padStart(2,'0') + ' ' + plural(kop,'копейка','копейки','копеек');
+}
+
+/* ---------- Word template ---------- */
+const TAG = /\{\{\s*([#\/]?)\s*([A-Za-z_][\w]*)\s*\}\}/g;
+const PERIOD = /\d{2}\.\d{2}\.\d{4}\s*[–—-]\s*\d{2}\.\d{2}\.\d{4}/g;
+const VATLABEL = /НДС\s*\(\s*\d+(?:[.,]\d+)?\s*%\s*\)/g;
+const RUBWORD = /(^|[^А-Яа-яЁё])([Рр])убл(?:ями|ях|ям|ей|ём|ем|я|ю|ь|и|е)(?![А-Яа-яЁё])/g;
+const tNodes = el => Array.from(el.getElementsByTagNameNS(W, 't'));
+const textOf = el => tNodes(el).map(t => t.textContent).join('');
+
+// Replaces matches inside one paragraph even when Word has split the text across several runs.
+function replaceInPara(p, re, fn){
+  const ts = tNodes(p); if (!ts.length) return 0;
+  const full = ts.map(t => t.textContent).join('');
+  re.lastIndex = 0;
+  const ms = Array.from(full.matchAll(re)); if (!ms.length) return 0;
+  for (let k = ms.length - 1; k >= 0; k--){
+    const m = ms[k], start = m.index, end = start + m[0].length, rep = String(fn(m));
+    let pos = 0, first = true;
+    for (const t of ts){
+      const txt = t.textContent, a = pos, b = pos + txt.length; pos = b;
+      if (b <= start || a >= end) continue;
+      const s = Math.max(start, a) - a, e = Math.min(end, b) - a;
+      t.textContent = txt.slice(0, s) + (first ? rep : '') + txt.slice(e);
+      t.setAttribute('xml:space', 'preserve');
+      first = false;
+    }
+  }
+  return ms.length;
+}
+function eachPara(root, fn){ Array.from(root.getElementsByTagNameNS(W, 'p')).forEach(fn); }
+function parseXml(xml){
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Не удалось прочитать шаблон: файл повреждён.');
+  return doc;
+}
+function fillPart(xml, data, opts){
+  const doc = parseXml(xml), unknown = new Set();
+  if (opts.period) eachPara(doc, p => replaceInPara(p, PERIOD, () => opts.period));
+  eachPara(doc, p => replaceInPara(p, VATLABEL, () => opts.vat ? 'НДС(' + VAT_RATE + '%)' : 'НДС'));
+  if (opts.kz) eachPara(doc, p => replaceInPara(p, RUBWORD, m => m[1] + (m[2] === 'Р' ? 'Тенге' : 'тенге')));
+  const sub = (root, scope) => eachPara(root, p => replaceInPara(p, TAG, m => {
+    if (m[1]) return '';
+    if (m[2] in scope && !Array.isArray(scope[m[2]])) return scope[m[2]];
+    unknown.add(m[2]); return m[0];
+  }));
+  // Repeat the table row that holds {{#items}} … {{/items}} once per extra line.
+  const OPEN = /\{\{\s*#\s*([A-Za-z_]\w*)\s*\}\}/;
+  for (const tr of Array.from(doc.getElementsByTagNameNS(W, 'tr'))){
+    if (!tr.parentNode) continue;
+    const m = OPEN.exec(textOf(tr)); if (!m || !Array.isArray(data[m[1]])) continue;
+    if (Array.from(tr.getElementsByTagNameNS(W, 'tr')).some(inner => OPEN.test(textOf(inner)))) continue;
+    for (const item of data[m[1]]){
+      const clone = tr.cloneNode(true);
+      sub(clone, Object.assign({}, data, item));
+      tr.parentNode.insertBefore(clone, tr);
+    }
+    tr.parentNode.removeChild(tr);
+  }
+  sub(doc, data);
+  const out = new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/, '');
+  return { xml: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + out, unknown };
+}
+async function loadTemplate(file){
+  if (!/\.docx$/i.test(file.name)) throw new Error('Нужен файл Word в формате .docx.');
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const entries = [];
+  for (const name of Object.keys(zip.files)){
+    const f = zip.files[name]; if (f.dir) continue;
+    entries.push({ name, data: await f.async('uint8array') });
+  }
+  const parts = entries.filter(e => /^word\/(document|header\d*|footer\d*)\.xml$/.test(e.name))
+    .map(e => ({ name: e.name, xml: new TextDecoder('utf-8').decode(e.data) }));
+  if (!parts.some(p => p.name === 'word/document.xml')) throw new Error('Это не документ Word.');
+  const tags = new Set(); let hasPeriod = false, hasVat = false;
+  for (const part of parts){
+    eachPara(parseXml(part.xml), p => {
+      const s = textOf(p);
+      for (const m of s.matchAll(TAG)) tags.add((m[1] || '') + m[2]);
+      PERIOD.lastIndex = 0; VATLABEL.lastIndex = 0;
+      if (PERIOD.test(s)) hasPeriod = true;
+      if (VATLABEL.test(s)) hasVat = true;
+    });
+  }
+  return { name: file.name, entries, parts, tags, hasPeriod: hasPeriod || tags.has('period'), hasVat };
+}
+async function buildDocx(city){
+  const tpl = state.tpl, data = invoiceData(city);
+  const opts = { period: $('#use-period').checked ? periodText() : null, vat: $('#vat').checked, kz: state.kz };
+  const z = new JSZip(), unknown = new Set();
+  for (const e of tpl.entries){
+    const part = tpl.parts.find(p => p.name === e.name);
+    if (!part) { z.file(e.name, e.data); continue; }
+    const r = fillPart(part.xml, data, opts);
+    r.unknown.forEach(u => unknown.add(u));
+    z.file(e.name, r.xml);
+  }
+  return { bytes: await z.generateAsync({ type:'uint8array', compression:'DEFLATE' }), unknown };
+}
+
+/* ---------- Excel ---------- */
+const normHead = v => String(v ?? '').toLowerCase().replace(/ё/g,'е').replace(/[\s\u00A0]+/g,'');
+const normCity = v => String(v ?? '').toLowerCase().replace(/ё/g,'е').replace(/[\s\u00A0]+/g,' ').trim();
+const clean = v => String(v ?? '').replace(/[\s\u00A0]+/g,' ').trim();
+const xdoc = str => new DOMParser().parseFromString(str, 'application/xml');
+const els = (node, name) => Array.from(node.getElementsByTagNameNS('*', name));
+function colIndex(ref){ let n = 0; for (const ch of ref){ const c = ch.charCodeAt(0); if (c < 65 || c > 90) break; n = n * 26 + (c - 64); } return n - 1; }
+async function readBook(file){
+  if (!/\.xlsx$/i.test(file.name)) throw new Error('Нужен файл Excel в формате .xlsx.');
+  let zip; try { zip = await JSZip.loadAsync(await file.arrayBuffer()); } catch (e) { throw new Error('Файл не открывается как Excel (.xlsx).'); }
+  const txt = async n => { const f = zip.file(n); return f ? f.async('string') : null; };
+  const wbx = await txt('xl/workbook.xml'); if (!wbx) throw new Error('Файл не открывается как Excel (.xlsx).');
+  const rels = {}, rx = await txt('xl/_rels/workbook.xml.rels');
+  if (rx) els(xdoc(rx), 'Relationship').forEach(r => { rels[r.getAttribute('Id')] = r.getAttribute('Target'); });
+  const shared = [], ss = await txt('xl/sharedStrings.xml');
+  if (ss) els(xdoc(ss), 'si').forEach(si => shared.push(els(si, 't').filter(t => t.parentNode.localName !== 'rPh').map(t => t.textContent).join('')));
+  const sheets = [];
+  for (const sh of els(xdoc(wbx), 'sheet')){
+    const id = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    const target = rels[id]; if (!target) continue;
+    const xml = await txt(target.charAt(0) === '/' ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '')); if (!xml) continue;
+    const rows = [];
+    els(xdoc(xml), 'row').forEach((row, k) => {
+      const ri = (+row.getAttribute('r') || k + 1) - 1, out = rows[ri] || (rows[ri] = []);
+      els(row, 'c').forEach((c, j) => {
+        const ci = c.getAttribute('r') ? colIndex(c.getAttribute('r')) : j, t = c.getAttribute('t');
+        const vEl = els(c, 'v')[0], v = vEl ? vEl.textContent : null;
+        let val = null;
+        if (t === 's') val = shared[+v] ?? null;
+        else if (t === 'inlineStr') val = els(c, 't').map(x => x.textContent).join('');
+        else if (t === 'str' || t === 'e') val = v;
+        else if (t === 'b') val = v === '1';
+        else if (v != null && v !== '') val = Number(v);
+        out[ci] = val;
+      });
+    });
+    for (let i = 0; i < rows.length; i++){ const r = rows[i] || (rows[i] = []); for (let j = 0; j < r.length; j++) if (r[j] === undefined) r[j] = null; }
+    sheets.push({ name: sh.getAttribute('name') || '', rows });
+  }
+  if (!sheets.length) throw new Error('В файле нет листов.');
+  return { sheets };
+}
+// Minimal .xlsx writer for the summary sheet: one sheet, text and numbers.
+function buildXlsx(sheetName, table, widths){
+  const col = i => { let s = ''; i++; while (i > 0){ s = String.fromCharCode(65 + (i - 1) % 26) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const x = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const rows = table.map((r, i) => '<row r="' + (i + 1) + '">' + r.map((v, j) => {
+    const ref = col(j) + (i + 1);
+    return typeof v === 'number' ? '<c r="' + ref + '"><v>' + v + '</v></c>' : '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + x(v ?? '') + '</t></is></c>';
+  }).join('') + '</row>').join('');
+  const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n', ns = 'http://schemas.openxmlformats.org/';
+  const z = new JSZip();
+  z.file('[Content_Types].xml', head + '<Types xmlns="' + ns + 'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  z.file('_rels/.rels', head + '<Relationships xmlns="' + ns + 'package/2006/relationships"><Relationship Id="rId1" Type="' + ns + 'officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  z.file('xl/workbook.xml', head + '<workbook xmlns="' + ns + 'spreadsheetml/2006/main" xmlns:r="' + ns + 'officeDocument/2006/relationships"><sheets><sheet name="' + x(sheetName) + '" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  z.file('xl/_rels/workbook.xml.rels', head + '<Relationships xmlns="' + ns + 'package/2006/relationships"><Relationship Id="rId1" Type="' + ns + 'officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+  z.file('xl/worksheets/sheet1.xml', head + '<worksheet xmlns="' + ns + 'spreadsheetml/2006/main"><cols>' + widths.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>' + rows + '</sheetData></worksheet>');
+  return z.generateAsync({ type:'uint8array', compression:'DEFLATE' });
+}
+function parseRequisites(wb, onlyNamed){
+  const sheet = wb.sheets.find(x => normHead(x.name) === 'данныеюл') || (onlyNamed ? null : wb.sheets[0]);
+  if (!sheet) return null;
+  const map = new Map();
+  for (const r of sheet.rows){
+    const city = normCity(r[0]), val = clean(r[1]);
+    if (!city || !val || city === 'город') continue;
+    map.set(city, val);
+  }
+  return map.size ? map : null;
+}
+function parseCities(wb){
+  const sheet = wb.sheets.find(x => normHead(x.name) === 'workbook') || wb.sheets.find(x => normHead(x.name) !== 'данныеюл');
+  if (!sheet) throw new Error('В файле нет листа с данными по городам.');
+  const rows = sheet.rows, name = sheet.name;
+  let h = rows.slice(0, 15).findIndex(r => r && r.some(c => normHead(c) === 'город'));
+  const head = h >= 0 ? rows[h].map(normHead) : [];
+  const find = (names, fallback) => { const i = head.findIndex(x => names.includes(x)); return i >= 0 ? i : fallback; };
+  const iCity = find(['город'], 0), iRoy = find(['роялти'], 5), iRol = find(['ролики','ролик'], 6),
+        iSms = find(['смс','sms'], 7), iTot = find(['суммаплатежа','сумма'], 8), iNum = find(['номерсчета','номер'], 12);
+  const cols = [
+    { key:'ролики', idx:iRol, core:true, title: h >= 0 && rows[h][iRol] ? clean(rows[h][iRol]) : 'Ролики' },
+    { key:'смс', idx:iSms, core:true, title: h >= 0 && rows[h][iSms] ? clean(rows[h][iSms]) : 'СМС' }
+  ];
+  if (h >= 0) rows[h].forEach((c, i) => {
+    if (i > iNum && c != null && clean(c) && normHead(c) !== 'комментарии') cols.push({ key: normHead(c), idx:i, core:false, title: clean(c) });
+  });
+  const cities = [];
+  for (const r of rows.slice(h + 1)){
+    const city = clean(r && r[iCity]); if (!city || normCity(city) === 'город') continue;
+    const amounts = {}; cols.forEach(c => { amounts[c.key] = round2(parseNum(r[c.idx])); });
+    cities.push({ city, number: clean(r[iNum]), royalty: round2(parseNum(r[iRoy])), total: round2(parseNum(r[iTot])),
+      amounts, company:'', companyEdited:false, included:false, touched:false });
+  }
+  if (!cities.length) throw new Error('В листе «' + name + '» не найдено ни одного города.');
+  return { cols, cities, sheet:name };
+}
+
+/* ---------- invoice model ---------- */
+const reqMap = () => state.reqOwn || state.reqEmbedded;
+const titleOf = col => (state.titles[col.key] || '').trim() || col.title;
+const activeLines = c => state.cols.filter(col => (col.core || $('#extras').checked) && c.amounts[col.key] > 0)
+  .map(col => ({ key: col.key, title: titleOf(col), amount: c.amounts[col.key] }));
+const linesSum = c => round2(c.royalty + activeLines(c).reduce((s, l) => s + l.amount, 0));
+function issues(c){
+  const out = [];
+  if (!c.company) out.push({ code:'req', cls:'bad', text:'Нет реквизитов', block:true });
+  if (!c.number) out.push({ code:'num', cls:'bad', text:'Нет номера счёта', block:true });
+  if (c.total <= 0) out.push({ code:'zero', cls:'warn', text:'Нулевая сумма' });
+  else if (Math.abs(linesSum(c) - c.total) > 0.005) out.push({ code:'sum', cls:'warn', text:'Строки ' + fmt(linesSum(c)) + ' ≠ платёж ' + fmt(c.total) });
+  return out;
+}
+function settle(){
+  const map = reqMap();
+  for (const c of state.cities){
+    if (!c.companyEdited) c.company = (map && map.get(normCity(c.city))) || '';
+    const is = issues(c);
+    if (is.some(i => i.block)) c.included = false;
+    else if (!c.touched) c.included = is.length === 0;
+  }
+}
+function periodText(){
+  const m = +$('#month').value, y = +$('#year').value || new Date().getFullYear();
+  const last = new Date(y, m + 1, 0).getDate(), mm = String(m + 1).padStart(2,'0');
+  return '01.' + mm + '.' + y + ' – ' + last + '.' + mm + '.' + y;
+}
+function docDate(){
+  const v = $('#doc-date').value, d = v ? new Date(v + 'T00:00:00') : new Date();
+  return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth() + 1).padStart(2,'0') + '.' + d.getFullYear();
+}
+function invoiceData(c){
+  const lines = activeLines(c), vatOn = $('#vat').checked;
+  return {
+    numberDocument: c.number, dateDocument: docDate(), companyData: c.company, period: periodText(),
+    royalty: fmt(c.royalty), totalAmount: fmt(c.total),
+    vatAmount: vatOn ? fmt(round2(c.total * VAT_RATE / (100 + VAT_RATE))) : 'Без НДС',
+    itemsCount: String(lines.length + 1), totalInWords: rublesInWords(c.total),
+    items: lines.map((l, i) => ({ no: String(i + 2), title: l.title, amount: fmt(l.amount) }))
+  };
+}
+
+/* ---------- rendering ---------- */
+function renderTitles(){
+  const box = $('#titles-box'); box.hidden = !state.cols.length;
+  $('#titles').innerHTML = state.cols.map((col, i) =>
+    '<div class="field"><label for="title-' + i + '">Колонка «' + esc(col.title) + '»</label>' +
+    '<input type="text" id="title-' + i + '" data-title="' + esc(col.key) + '" value="' + esc(state.titles[col.key] || '') + '" placeholder="' + esc(col.title) + '"></div>').join('');
+}
+function renderNotes(){
+  const t = state.tpl, notes = [];
+  if (t){
+    const need = ['numberDocument','companyData','totalAmount'].filter(k => !t.tags.has(k));
+    if (need.length) notes.push('<div class="note bad">В шаблоне нет меток: ' + need.map(k => '{{' + k + '}}').join(', ') + '. Эти данные в счёт не попадут.</div>');
+    if (!t.tags.has('#items')) notes.push('<div class="note">В шаблоне нет строки {{#items}} … {{/items}}: ролики, СМС и дополнительные услуги не появятся отдельными строками.</div>');
+    if (!t.hasPeriod && $('#use-period').checked) notes.push('<div class="note">В шаблоне не найден период вида 01.05.2025 – 31.05.2025, подставлять его некуда.</div>');
+    if (!t.hasVat) notes.push('<div class="note">В шаблоне не найдена подпись «НДС(…%)». Сумма НДС посчитается по ставке ' + VAT_RATE + '%, подпись проверьте сами.</div>');
+  }
+  $('#tpl-notes').innerHTML = notes.join('');
+}
+function render(){
+  settle(); renderNotes();
+  $('#period-view').textContent = periodText();
+  const cs = state.cities, has = cs.length > 0;
+  $('#check-empty').hidden = has; $('#check-body').hidden = !has;
+  const ready = cs.filter(c => issues(c).length === 0).length, inc = cs.filter(c => c.included).length;
+  if (has){
+    const chips = [['all','Все', cs.length], ['ok','Готовы', ready], ['att','Нужно решение', cs.length - ready]];
+    $('#chips').innerHTML = chips.map(([k, label, n]) =>
+      '<button class="chip" data-filter="' + k + '" aria-pressed="' + (state.filter === k) + '">' + label + ' <span class="num">' + n + '</span></button>').join('');
+    const html = cs.map((c, i) => {
+      const is = issues(c);
+      if (state.filter === 'ok' && is.length) return '';
+      if (state.filter === 'att' && !is.length) return '';
+      const blocked = is.some(x => x.block), open = state.open.has(i);
+      const pills = is.length ? is.map(x => '<span class="pill ' + x.cls + '">' + esc(x.text) + '</span>').join('') : '<span class="pill ok">Готов</span>';
+      let h = '<div class="row"><input type="checkbox" id="inc-' + i + '" data-inc="' + i + '"' + (c.included ? ' checked' : '') + (blocked ? ' disabled' : '') +
+        ' aria-label="Включить счёт: ' + esc(c.city) + '"><div class="who"><b>' + esc(c.city) + '</b><span>' + esc(c.number || 'без номера') + '</span></div>' +
+        '<div class="num">' + fmt(c.total) + '</div><div class="pills">' + pills + '</div>' +
+        '<button class="more" data-open="' + i + '" aria-expanded="' + open + '">' + (open ? 'Свернуть' : 'Изменить') + '</button></div>';
+      if (open){
+        const f = (id, label, val, attr) => '<div class="field"><label for="' + id + '">' + esc(label) + '</label><input type="text" inputmode="decimal" id="' + id + '" ' + attr + ' value="' + esc(val) + '"></div>';
+        h += '<div class="edit"><div class="field"><label for="co-' + i + '">Покупатель</label><textarea id="co-' + i + '" data-co="' + i + '">' + esc(c.company) + '</textarea></div><div class="lines">' +
+          '<div class="field"><label for="nm-' + i + '">Номер счёта</label><input type="text" id="nm-' + i + '" data-nm="' + i + '" value="' + esc(c.number) + '"></div>' +
+          f('ry-' + i, 'Роялти', fmt(c.royalty), 'data-ry="' + i + '"') +
+          activeLines(c).map((l, k) => f('ln-' + i + '-' + k, l.title, fmt(l.amount), 'data-ln="' + i + '" data-key="' + esc(l.key) + '"')).join('') +
+          f('tt-' + i, 'Сумма платежа', fmt(c.total), 'data-tt="' + i + '"') + '</div>' +
+          '<div class="actions"><button data-eq="' + i + '">Итог = сумма строк (' + fmt(linesSum(c)) + ')</button>' +
+          '<button data-one="' + i + '"' + (state.tpl && !blocked ? '' : ' disabled') + '>Скачать этот счёт</button></div></div>';
+      }
+      return h;
+    }).join('');
+    $('#list').innerHTML = html || '<div class="row"><span></span><span class="muted">В этой группе городов нет.</span></div>';
+  }
+  const go = $('#go'); go.disabled = !(state.tpl && inc > 0);
+  go.textContent = inc > 0 ? 'Сгенерировать счета: ' + inc : 'Сгенерировать счета';
+  $('#go-hint').textContent = !state.tpl && !has ? 'Загрузите шаблон и файл данных.' : !state.tpl ? 'Загрузите шаблон документа.' : !has ? 'Загрузите файл данных.' :
+    inc ? 'Не войдут: ' + (cs.length - inc) + ' из ' + cs.length + '.' : 'Отметьте города, для которых нужен счёт.';
+}
+
+/* ---------- saving ---------- */
+let downloadsP = null;
+function downloadsCap(){
+  if (!downloadsP) downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+  return downloadsP;
+}
+downloadsCap();
+async function saveFile(filename, bytes, mime){
+  const blob = new Blob([bytes], { type: mime });
+  const cap = await downloadsCap();
+  if (cap){
+    try { await cap.save({ filename, data: blob }); return 'ok'; }
+    catch (e) { return e && e.code === 'declined' ? 'declined' : e && e.code === 'rate_limited' ? 'busy' : 'fail'; }
+  }
+  try {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000); return 'ok';
+  } catch (e) { return 'fail'; }
+}
+const safeName = s => String(s).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const saveMsg = r => r === 'ok' ? '' : r === 'declined' ? 'Сохранение отменено. Нажмите «Скачать архив», чтобы повторить.' :
+  r === 'busy' ? 'Окно сохранения уже открыто. Закройте его и повторите.' : 'Сохранить файл не получилось. Откройте страницу в браузере на компьютере и повторите.';
+
+async function generate(){
+  const go = $('#go'), box = $('#result');
+  go.disabled = true; box.hidden = false; box.innerHTML = '<p class="muted">Собираю счета…</p>';
+  try {
+    const zip = new JSZip(), made = [], skipped = [], unknown = new Set(), used = new Set();
+    for (const c of state.cities){
+      if (!c.included){ skipped.push(c); continue; }
+      const r = await buildDocx(c); r.unknown.forEach(u => unknown.add(u));
+      let name = safeName(c.number + ' – ' + c.city), n = 2;
+      while (used.has(name.toLowerCase())) name = safeName(c.number + ' – ' + c.city + ' (' + n++ + ')');
+      used.add(name.toLowerCase()); zip.file(name + '.docx', r.bytes); made.push(c);
+    }
+    const vatOn = $('#vat').checked;
+    const table = [['Город','Номер счёта','Роялти','Строк в счёте','Сумма платежа','НДС ' + VAT_RATE + '%','Счёт','Замечания']];
+    for (const c of state.cities) table.push([c.city, c.number, c.royalty, activeLines(c).length + 1, c.total,
+      vatOn ? (state.kz ? Math.round(c.total * VAT_RATE / (100 + VAT_RATE)) : round2(c.total * VAT_RATE / (100 + VAT_RATE))) : 0, c.included ? 'сформирован' : 'пропущен', issues(c).map(i => i.text).join('; ')]);
+    zip.file('Сводка.xlsx', await buildXlsx('Сводка', table, [22,16,14,12,16,14,14,44]));
+    const bytes = await zip.generateAsync({ type:'uint8array', compression:'DEFLATE' });
+    const m = +$('#month').value;
+    state.zip = { name: 'Счета ' + (state.kz ? 'Казахстан ' : '') + MONTHS[m].toLowerCase() + ' ' + $('#year').value + '.zip', bytes };
+    const total = made.reduce((s, c) => s + c.total, 0);
+    let h = '<h3>Готово: ' + made.length + ' ' + plural(made.length,'счёт','счёта','счетов') + ' на ' + fmt(total) + (state.kz ? ' ₸' : ' ₽') + '</h3>' +
+      '<p class="muted small">Период: ' + ($('#use-period').checked ? periodText() : 'как в шаблоне') + ' · дата ' + docDate() + ' · ' + (vatOn ? 'НДС ' + VAT_RATE + '% в составе суммы' : 'без НДС') + '</p>';
+    if (unknown.size) h += '<div class="note">В шаблоне остались незаполненные метки: ' + Array.from(unknown).map(u => '{{' + esc(u) + '}}').join(', ') + '.</div>';
+    if (skipped.length) h += '<p style="margin:12px 0 0">Пропущено: ' + skipped.length + '</p><ul>' + skipped.map(c =>
+      '<li><b>' + esc(c.city) + '</b> — ' + esc(issues(c).map(i => i.text.toLowerCase()).join('; ') || 'снята отметка') + '</li>').join('') + '</ul>';
+    h += '<div class="actions" style="margin-top:14px"><button id="again">Скачать архив</button><span class="muted small" id="save-msg"></span></div>';
+    box.innerHTML = h;
+    $('#save-msg').textContent = saveMsg(await saveFile(state.zip.name, state.zip.bytes, 'application/zip'));
+  } catch (e) {
+    box.innerHTML = '<div class="note bad">' + esc(e.message || 'Не получилось собрать счета.') + '</div>';
+  }
+  render();
+}
+
+/* ---------- events ---------- */
+function setZone(id, file, text, cls){
+  const z = $('#z-' + id); z.classList.toggle('done', cls === 'good');
+  if (file) z.querySelector('.fname').textContent = file.name;
+  const s = $('#s-' + id); s.textContent = text; s.className = 'state ' + (cls || '');
+}
+async function onFile(id, file){
+  if (!file) return;
+  setZone(id, file, 'Читаю…');
+  try {
+    if (id === 'tpl'){
+      state.tpl = await loadTemplate(file);
+      setZone(id, file, 'Меток в шаблоне: ' + state.tpl.tags.size, 'good');
+    } else if (id === 'data'){
+      const wb = await readBook(file), r = parseCities(wb);
+      state.cols = r.cols; state.cities = r.cities; state.open.clear(); state.filter = 'all';
+      state.reqEmbedded = parseRequisites(wb, true);
+      setZone(id, file, 'Городов: ' + r.cities.length + (state.reqEmbedded ? ' · реквизитов: ' + state.reqEmbedded.size : ' · листа «Данные ЮЛ» нет'), 'good');
+      renderTitles();
+    } else {
+      const map = parseRequisites(await readBook(file), false);
+      if (!map) throw new Error('В файле не найдены реквизиты: нужны город в колонке A и данные в колонке B.');
+      state.reqOwn = map; setZone(id, file, 'Реквизитов: ' + map.size, 'good');
+    }
+  } catch (e) {
+    if (id === 'tpl') state.tpl = null;
+    if (id === 'data'){ state.cities = []; state.cols = []; state.reqEmbedded = null; renderTitles(); }
+    if (id === 'req') state.reqOwn = null;
+    setZone(id, file, e.message || 'Не удалось прочитать файл.', 'err');
+  }
+  $('#result').hidden = true; render();
+}
+['tpl','data','req'].forEach(id => {
+  const z = $('#z-' + id), inp = $('#f-' + id);
+  inp.addEventListener('change', () => { onFile(id, inp.files[0]); inp.value = ''; });
+  ['dragenter','dragover'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove('over'); }));
+  z.addEventListener('drop', e => onFile(id, e.dataTransfer.files[0]));
+});
+['month','year','use-period','doc-date','vat','extras'].forEach(id => $('#' + id).addEventListener('change', () => { $('#result').hidden = true; render(); }));
+$('#titles').addEventListener('change', e => {
+  const k = e.target.dataset.title; if (!k) return;
+  state.titles[k] = e.target.value.trim();
+  try { localStorage.setItem('invoice-titles', JSON.stringify(state.titles)); } catch (err) {}
+  render();
+});
+$('#chips').addEventListener('click', e => { const b = e.target.closest('[data-filter]'); if (b){ state.filter = b.dataset.filter; render(); } });
+$('#list').addEventListener('click', async e => {
+  const d = e.target.dataset;
+  if (d.open != null){ const i = +d.open; state.open.has(i) ? state.open.delete(i) : state.open.add(i); render(); }
+  else if (d.eq != null){ const c = state.cities[+d.eq]; c.total = linesSum(c); $('#result').hidden = true; render(); }
+  else if (d.one != null){
+    const c = state.cities[+d.one], r = await buildDocx(c);
+    await saveFile(safeName(c.number + ' – ' + c.city) + '.docx', r.bytes, DOCX);
+  }
+});
+$('#list').addEventListener('change', e => {
+  const d = e.target.dataset, v = e.target.value; let c;
+  if (d.inc != null){ c = state.cities[+d.inc]; c.included = e.target.checked; c.touched = true; }
+  else if (d.co != null){ c = state.cities[+d.co]; c.company = clean(v); c.companyEdited = true; }
+  else if (d.nm != null){ c = state.cities[+d.nm]; c.number = clean(v); }
+  else if (d.ry != null){ c = state.cities[+d.ry]; c.royalty = round2(parseNum(v)); }
+  else if (d.ln != null){ c = state.cities[+d.ln]; c.amounts[d.key] = round2(parseNum(v)); }
+  else if (d.tt != null){ c = state.cities[+d.tt]; c.total = round2(parseNum(v)); }
+  else return;
+  $('#result').hidden = true; render();
+});
+[['tab-rub', false], ['tab-kz', true]].forEach(([id, kz]) => $('#' + id).addEventListener('click', () => {
+  state.kz = kz; state.zip = null;
+  $('#tab-rub').setAttribute('aria-selected', String(!kz)); $('#tab-kz').setAttribute('aria-selected', String(kz));
+  $('#kz-note').hidden = !kz; $('#result').hidden = true; render();
+}));
+$('#go').addEventListener('click', generate);
+$('#result').addEventListener('click', async e => {
+  if (e.target.id === 'again' && state.zip) $('#save-msg').textContent = saveMsg(await saveFile(state.zip.name, state.zip.bytes, 'application/zip'));
+});
+
+/* ---------- start ---------- */
+$('#month').innerHTML = MONTHS.map((m, i) => '<option value="' + i + '">' + m + '</option>').join('');
+const prev = new Date(); prev.setDate(1); prev.setMonth(prev.getMonth() - 1);
+$('#month').value = String(prev.getMonth()); $('#year').value = String(prev.getFullYear());
+render();
+})();
+</script>
+</body>
+</html>
