@@ -95,6 +95,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .pill.ok{color:var(--ok)} .pill.warn{color:var(--warn)} .pill.bad{color:var(--bad)}
 .edit{background:var(--well);border-top:1px solid var(--line);padding:16px 14px;display:flex;flex-direction:column;gap:14px}
 .lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.custom{display:flex;flex-direction:column;gap:10px}
+.custom .cu{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:10px;align-items:end}
+.custom .cu button{padding:9px 12px}
+@media (max-width:560px){.custom .cu{grid-template-columns:minmax(0,1fr) 110px auto}}
 .empty{color:var(--muted);padding:6px 0}
 @media (max-width:640px){
   .row{grid-template-columns:auto minmax(0,1fr) auto}
@@ -463,8 +467,11 @@ function parseCities(wb){
 /* ---------- invoice model ---------- */
 const reqMap = () => state.reqOwn || state.reqEmbedded;
 const titleOf = col => (state.titles[col.key] || '').trim() || col.title;
-const activeLines = c => state.cols.filter(col => (col.core || $('#extras').checked) && c.amounts[col.key] > 0)
+const baseLines = c => state.cols.filter(col => (col.core || $('#extras').checked) && c.amounts[col.key] > 0)
   .map(col => ({ key: col.key, title: titleOf(col), amount: c.amounts[col.key] }));
+const customLines = c => (c.custom || []).filter(l => l.title.trim() && l.amount !== 0)
+  .map(l => ({ key: 'custom', title: l.title.trim(), amount: l.amount }));
+const activeLines = c => baseLines(c).concat(customLines(c));
 const linesSum = c => round2(c.royalty + activeLines(c).reduce((s, l) => s + l.amount, 0));
 function issues(c){
   const out = [];
@@ -546,8 +553,14 @@ function render(){
         h += '<div class="edit"><div class="field"><label for="co-' + i + '">Покупатель</label><textarea id="co-' + i + '" data-co="' + i + '">' + esc(c.company) + '</textarea></div><div class="lines">' +
           '<div class="field"><label for="nm-' + i + '">Номер счёта</label><input type="text" id="nm-' + i + '" data-nm="' + i + '" value="' + esc(c.number) + '"></div>' +
           f('ry-' + i, 'Роялти', fmt(c.royalty), 'data-ry="' + i + '"') +
-          activeLines(c).map((l, k) => f('ln-' + i + '-' + k, l.title, fmt(l.amount), 'data-ln="' + i + '" data-key="' + esc(l.key) + '"')).join('') +
+          baseLines(c).map((l, k) => f('ln-' + i + '-' + k, l.title, fmt(l.amount), 'data-ln="' + i + '" data-key="' + esc(l.key) + '"')).join('') +
           f('tt-' + i, 'Сумма платежа', fmt(c.total), 'data-tt="' + i + '"') + '</div>' +
+          '<div class="custom"><span class="small muted">Дополнительные строки встают в счёт после остальных, по порядку.</span>' +
+          (c.custom || []).map((l, k) => '<div class="cu">' +
+            '<div class="field"><label for="cut-' + i + '-' + k + '">Строка ' + (k + 1) + ': название</label><input type="text" id="cut-' + i + '-' + k + '" data-cut="' + i + '" data-k="' + k + '" value="' + esc(l.title) + '" placeholder="Например, Пени"></div>' +
+            '<div class="field"><label for="cua-' + i + '-' + k + '">Сумма</label><input type="text" inputmode="decimal" id="cua-' + i + '-' + k + '" data-cua="' + i + '" data-k="' + k + '" value="' + (l.amount ? esc(fmt(l.amount)) : '') + '" placeholder="0,00"></div>' +
+            '<button data-cudel="' + i + '" data-k="' + k + '" aria-label="Удалить строку ' + (k + 1) + '">✕</button></div>').join('') +
+          '<div><button data-cuadd="' + i + '">+ Добавить строку</button></div></div>' +
           '<div class="actions"><button data-eq="' + i + '">Итог = сумма строк (' + fmt(linesSum(c)) + ')</button>' +
           '<button data-one="' + i + '"' + (state.tpl && !blocked ? '' : ' disabled') + '>Скачать этот счёт</button></div></div>';
       }
@@ -670,6 +683,12 @@ $('#chips').addEventListener('click', e => { const b = e.target.closest('[data-f
 $('#list').addEventListener('click', async e => {
   const d = e.target.dataset;
   if (d.open != null){ const i = +d.open; state.open.has(i) ? state.open.delete(i) : state.open.add(i); render(); }
+  else if (d.cuadd != null){
+    const i = +d.cuadd, c = state.cities[i]; (c.custom = c.custom || []).push({ title:'', amount:0 });
+    $('#result').hidden = true; render();
+    const el = $('#cut-' + i + '-' + (c.custom.length - 1)); if (el) el.focus();
+  }
+  else if (d.cudel != null){ state.cities[+d.cudel].custom.splice(+d.k, 1); $('#result').hidden = true; render(); }
   else if (d.eq != null){ const c = state.cities[+d.eq]; c.total = linesSum(c); $('#result').hidden = true; render(); }
   else if (d.one != null){
     const c = state.cities[+d.one], r = await buildDocx(c);
@@ -684,6 +703,8 @@ $('#list').addEventListener('change', e => {
   else if (d.ry != null){ c = state.cities[+d.ry]; c.royalty = round2(parseNum(v)); }
   else if (d.ln != null){ c = state.cities[+d.ln]; c.amounts[d.key] = round2(parseNum(v)); }
   else if (d.tt != null){ c = state.cities[+d.tt]; c.total = round2(parseNum(v)); }
+  else if (d.cut != null){ c = state.cities[+d.cut]; c.custom[+d.k].title = v; }
+  else if (d.cua != null){ c = state.cities[+d.cua]; c.custom[+d.k].amount = round2(parseNum(v)); }
   else return;
   $('#result').hidden = true; render();
 });
