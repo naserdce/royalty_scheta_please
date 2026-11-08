@@ -829,25 +829,34 @@ function cvRender(){
   $('#cv-hint').textContent = !cv.rows.length ? 'Загрузите выгрузку и укажите курс.' : missing.length ? 'Нужен курс: ' + missing.join(', ') + '.' :
     'Городов: ' + cv.rows.length + ' · курс на ' + ruDate($('#cv-date').value || isoFirst()) + '.';
 }
+const cbrUrl = d => 'https://www.cbr-xml-daily.ru/archive/' + d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/daily_json.js';
+const isoOf = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+async function cbrDay(d){
+  try { const res = await fetch(cbrUrl(d), { cache: 'no-store' }); return res.ok ? await res.json() : null; } catch (e) { return null; }
+}
 async function cvFetch(){
   const iso = $('#cv-date').value, msg = $('#cv-rate-msg');
   if (!iso){ msg.innerHTML = '<div class="note">Выбери дату курса.</div>'; return; }
   const curs = cvCurs(); if (!curs.length){ msg.innerHTML = ''; return; }
-  msg.innerHTML = '<p class="muted small" style="margin:0">Загружаю курс ЦБ…</p>';
-  const base = new Date(iso + 'T12:00:00');
-  for (let i = 0; i <= 10; i++){
-    const d = new Date(base.getTime() - i * 86400000);
-    const url = 'https://www.cbr-xml-daily.ru/archive/' + d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/daily_json.js';
-    try {
-      const res = await fetch(url, { cache: 'no-store' }); if (!res.ok) continue;
-      const j = await res.json(), miss = [];
-      const on = d.toISOString().slice(0, 10) === iso ? '' : ' (последний курс до этой даты, ' + ruDate(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')) + ')';
-      curs.forEach(c => { const v = j.Valute && j.Valute[c]; if (v) cv.rates[c] = { nom: v.Nominal, val: v.Value, src: 'ЦБ на ' + ruDate(iso) + on }; else miss.push(c); });
-      msg.innerHTML = miss.length ? '<div class="note">ЦБ не публикует курс для ' + esc(miss.join(', ')) + '. Впиши его вручную.</div>' : '';
-      cvRender(); return;
-    } catch (e) { continue; }
+  msg.innerHTML = '<p class="muted small" style="margin:0">Загружаю курс ЦБ на ' + ruDate(iso) + '…</p>';
+  const day = new Date(iso + 'T12:00:00'), j = await cbrDay(day);
+  if (j){
+    const miss = [];
+    curs.forEach(c => { const v = j.Valute && j.Valute[c]; if (v) cv.rates[c] = { nom: v.Nominal, val: v.Value, src: 'ЦБ на ' + ruDate(iso) }; else miss.push(c); });
+    msg.innerHTML = miss.length ? '<div class="note">ЦБ не публикует курс для ' + esc(miss.join(', ')) + '. Впиши его вручную.</div>' : '';
+    cvRender(); return;
   }
-  msg.innerHTML = '<div class="note">Курс не загрузился. Впиши его вручную: <a href="https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=' + ruDate(iso) + '" target="_blank" rel="noopener" style="color:inherit">курсы ЦБ на ' + ruDate(iso) + '</a>.</div>';
+  // No rate for this exact day: look for the nearest earlier and later days and let the manager pick.
+  const found = [];
+  for (const dir of [-1, 1]) for (let i = 1; i <= 7; i++){
+    const d = new Date(day.getTime() + dir * i * 86400000);
+    if (dir > 0 && d > new Date()) break;
+    if (await cbrDay(d)){ found.push(isoOf(d)); break; }
+  }
+  const link = '<a href="https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=' + ruDate(iso) + '" target="_blank" rel="noopener" style="color:inherit">сайте ЦБ</a>';
+  msg.innerHTML = '<div class="note">На ' + ruDate(iso) + ' курса нет: в выходные и праздники ЦБ курс не устанавливает (или сервис курсов не ответил). ' +
+    (found.length ? 'Выбери день: ' + found.sort().map(d => '<button data-cvday="' + d + '" style="margin:4px 6px 0 0">Курс на ' + ruDate(d) + '</button>').join('') + '<br>' : '') +
+    'Или выбери другую дату, или впиши курс вручную, сверив его на ' + link + '.</div>';
 }
 async function cvFile(file){
   if (!file) return;
@@ -869,6 +878,7 @@ async function cvFile(file){
 $('#cv-date').value = isoFirst();
 $('#cv-first').addEventListener('click', () => { $('#cv-date').value = isoFirst(); cvFetch(); });
 $('#cv-fetch').addEventListener('click', cvFetch);
+$('#cv-rate-msg').addEventListener('click', e => { const d = e.target.dataset.cvday; if (d){ $('#cv-date').value = d; cvFetch(); } });
 $('#cv-date').addEventListener('change', () => { cvRender(); });
 $('#cv-rates').addEventListener('change', e => {
   const c = e.target.dataset.cvc; if (!c) return;
