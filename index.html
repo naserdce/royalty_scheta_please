@@ -144,12 +144,21 @@ table.cv td .sub{display:block;font-size:12px;color:var(--muted)}
         <span class="state" id="s-cv">Сводный финансовый отчёт из админки, .xlsx</span>
       </label>
     </div>
+    <div class="drop">
+      <span class="lbl">Реквизиты, необязательно</span>
+      <label class="zone" id="z-cvreq">
+        <input type="file" id="f-cvreq" accept=".xlsx">
+        <span class="fname"><span class="pick">Выберите файл</span> или перетащите сюда</span>
+        <span class="state" id="s-cvreq">Таблица счетов с листом «Данные ЮЛ». Лист перенесётся в файл для генератора</span>
+      </label>
+    </div>
     <div class="info">
       <b>Что нужно в файле</b>
       <ul>
         <li>Строка с заголовками, колонки «Город» и «Валюта», дальше суммы: «Доход», «Сумма роялти», «Роялти» и другие.</li>
         <li>В рубли переводятся денежные колонки: доход, роялти, расходы, прибыль, доп. опции. «Ролик» и «СМС» остаются как есть: они и так в рублях.</li>
         <li>Количество игр, команд и людей не меняется. Строки в рублях переносятся без пересчёта.</li>
+        <li>«Скачать для генератора счетов» даёт таблицу в формате генератора: роялти и ролики в рублях, СМС 0, номера счетов пустые. Впиши номера и загрузи файл на вкладке «Рубли».</li>
       </ul>
     </div>
   </section>
@@ -174,7 +183,8 @@ table.cv td .sub{display:block;font-size:12px;color:var(--muted)}
     <h2 id="h-cv-out"><span class="n">3</span>Результат в рублях</h2>
     <div id="cv-table" class="empty">Здесь появится выгрузка в рублях, по строке на город.</div>
     <div class="actions">
-      <button class="primary" id="cv-go" disabled>Скачать Excel в рублях</button>
+      <button class="primary" id="cv-inv" disabled>Скачать для генератора счетов</button>
+      <button id="cv-go" disabled>Скачать выгрузку в рублях</button>
       <span class="muted small" id="cv-hint">Загрузите выгрузку и укажите курс.</span>
     </div>
   </section>
@@ -469,21 +479,29 @@ async function readBook(file){
   if (!sheets.length) throw new Error('В файле нет листов.');
   return { sheets };
 }
-// Minimal .xlsx writer for the summary sheet: one sheet, text and numbers.
-function buildXlsx(sheetName, table, widths){
+// Minimal .xlsx writer: one or more sheets, text and numbers.
+function buildXlsx(sheetName, table, widths){ return buildBook([{ name: sheetName, table, widths }]); }
+function buildBook(sheets){
   const col = i => { let s = ''; i++; while (i > 0){ s = String.fromCharCode(65 + (i - 1) % 26) + s; i = Math.floor((i - 1) / 26); } return s; };
   const x = v => String(v).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const rows = table.map((r, i) => '<row r="' + (i + 1) + '">' + r.map((v, j) => {
-    const ref = col(j) + (i + 1);
-    return typeof v === 'number' ? '<c r="' + ref + '"><v>' + v + '</v></c>' : '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + x(v ?? '') + '</t></is></c>';
-  }).join('') + '</row>').join('');
+  const sheetXml = (table, widths) => {
+    const rows = table.map((r, i) => '<row r="' + (i + 1) + '">' + (r || []).map((v, j) => {
+      const ref = col(j) + (i + 1);
+      if (v == null || v === '') return '';
+      return typeof v === 'number' ? '<c r="' + ref + '"><v>' + v + '</v></c>' : '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + x(v) + '</t></is></c>';
+    }).join('') + '</row>').join('');
+    return '<worksheet xmlns="' + ns + 'spreadsheetml/2006/main">' + (widths && widths.length ? '<cols>' + widths.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols>' : '') + '<sheetData>' + rows + '</sheetData></worksheet>';
+  };
   const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n', ns = 'http://schemas.openxmlformats.org/';
   const z = new JSZip();
-  z.file('[Content_Types].xml', head + '<Types xmlns="' + ns + 'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  z.file('[Content_Types].xml', head + '<Types xmlns="' + ns + 'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    sheets.map((sh, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('') + '</Types>');
   z.file('_rels/.rels', head + '<Relationships xmlns="' + ns + 'package/2006/relationships"><Relationship Id="rId1" Type="' + ns + 'officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
-  z.file('xl/workbook.xml', head + '<workbook xmlns="' + ns + 'spreadsheetml/2006/main" xmlns:r="' + ns + 'officeDocument/2006/relationships"><sheets><sheet name="' + x(sheetName) + '" sheetId="1" r:id="rId1"/></sheets></workbook>');
-  z.file('xl/_rels/workbook.xml.rels', head + '<Relationships xmlns="' + ns + 'package/2006/relationships"><Relationship Id="rId1" Type="' + ns + 'officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
-  z.file('xl/worksheets/sheet1.xml', head + '<worksheet xmlns="' + ns + 'spreadsheetml/2006/main"><cols>' + widths.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>' + rows + '</sheetData></worksheet>');
+  z.file('xl/workbook.xml', head + '<workbook xmlns="' + ns + 'spreadsheetml/2006/main" xmlns:r="' + ns + 'officeDocument/2006/relationships"><sheets>' +
+    sheets.map((sh, i) => '<sheet name="' + x(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join('') + '</sheets></workbook>');
+  z.file('xl/_rels/workbook.xml.rels', head + '<Relationships xmlns="' + ns + 'package/2006/relationships">' +
+    sheets.map((sh, i) => '<Relationship Id="rId' + (i + 1) + '" Type="' + ns + 'officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>').join('') + '</Relationships>');
+  sheets.forEach((sh, i) => z.file('xl/worksheets/sheet' + (i + 1) + '.xml', head + sheetXml(sh.table, sh.widths)));
   return z.generateAsync({ type:'uint8array', compression:'DEFLATE' });
 }
 function parseRequisites(wb, onlyNamed){
@@ -825,7 +843,7 @@ function cvRender(){
         return '<tr><td>' + esc(r[cv.ci]) + '</td><td>' + esc(c) + '</td><td>' + (c === 'RUB' ? '—' : k == null ? 'нужен курс' : esc(String(round2(k * 10000) / 10000).replace('.', ','))) + '</td>' +
           show.map(j => { const v = parseNum(r[j]); return '<td>' + (k == null ? '—' : fmtFull(round2(v * k))) + (c === 'RUB' ? '' : '<span class="sub">' + esc(fmtFull(v).replace(/,00$/, '')) + ' ' + esc(c) + '</span>') + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
   }
-  $('#cv-go').disabled = !cv.rows.length || missing.length > 0;
+  $('#cv-go').disabled = $('#cv-inv').disabled = !cv.rows.length || missing.length > 0;
   $('#cv-hint').textContent = !cv.rows.length ? 'Загрузите выгрузку и укажите курс.' : missing.length ? 'Нужен курс: ' + missing.join(', ') + '.' :
     'Городов: ' + cv.rows.length + ' · курс на ' + ruDate($('#cv-date').value || isoFirst()) + '.';
 }
@@ -902,6 +920,43 @@ $('#cv-go').addEventListener('click', async () => {
   const bytes = await buildXlsx('Sheet1', table, table[0].map((h, i) => i === cv.ci ? 22 : 15));
   const r = await saveFile(name, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   $('#cv-hint').textContent = r === 'ok' ? 'Файл «' + name + '» сохранён.' : saveMsg(r).replace('«Скачать архив»', '«Скачать Excel в рублях»');
+});
+const INV_HEAD = ['Город','Кол-во игр','Кол-во команд','Кол-во человек','Денег','Роялти','Ролики','СМС','Сумма платежа','Изменение','В валюте','Валюта','Номер счета','Комментарии',
+  'Тематический раунд','Тематическая презентация','Брендирование','Презентация Хоум','Проведение Стрим-корпоратива','Пени','Реквизит','Доставка реквизита'];
+cv.req = null;
+async function cvReq(file){
+  if (!file) return;
+  setZone('cvreq', file, 'Читаю…');
+  try {
+    const wb = await readBook(file), sh = wb.sheets.find(x => normHead(x.name) === 'данныеюл');
+    if (!sh) throw new Error('В файле нет листа «Данные ЮЛ».');
+    cv.req = sh.rows.filter(r => r && r.some(v => v != null && String(v).trim()));
+    setZone('cvreq', file, 'Реквизитов: ' + cv.req.filter(r => r[0] && r[1] && normHead(r[0]) !== 'город').length, 'good');
+  } catch (e) { cv.req = null; setZone('cvreq', file, e.message || 'Не удалось прочитать файл.', 'err'); }
+}
+(() => {
+  const z = $('#z-cvreq'), inp = $('#f-cvreq');
+  inp.addEventListener('change', () => { cvReq(inp.files[0]); inp.value = ''; });
+  ['dragenter','dragover'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove('over'); }));
+  z.addEventListener('drop', e => cvReq(e.dataTransfer.files[0]));
+})();
+$('#cv-inv').addEventListener('click', async () => {
+  const iso = $('#cv-date').value || isoFirst();
+  const at = names => cv.head.findIndex(h => names.includes(normH(h)));
+  const iGames = at(['количество игр']), iTeams = at(['пришло команд']), iPeople = at(['пришло людей']), iInc = at(['доход','итого получено']),
+        iRoy = at(['сумма роялти']) >= 0 ? at(['сумма роялти']) : at(['роялти']), iRol = at(['ролик','ролики']), iSms = at(['смс']);
+  const n = (r, i) => i < 0 ? 0 : parseNum(r[i]);
+  const rows = cv.rows.map(r => {
+    const c = curOf(r), k = cvK(c), roy = round2(n(r, iRoy) * k), rol = round2(n(r, iRol)), sms = round2(n(r, iSms)), pay = round2(roy + rol + sms);
+    return [String(r[cv.ci]).trim(), n(r, iGames), n(r, iTeams), n(r, iPeople), round2(n(r, iInc) * k), roy, rol, sms, pay, null,
+      c === 'RUB' ? null : Math.round(n(r, iRoy) + (rol + sms) / k), c === 'RUB' ? null : c, null];
+  });
+  const sheets = [{ name: 'Workbook', table: [INV_HEAD].concat(rows), widths: INV_HEAD.map((h, i) => i === 0 ? 22 : i === 13 ? 24 : 14) }];
+  if (cv.req) sheets.push({ name: 'Данные ЮЛ', table: cv.req, widths: [24, 90] });
+  const name = safeName('Для счетов ' + ruDate(iso)) + '.xlsx';
+  const r = await saveFile(name, await buildBook(sheets), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  $('#cv-hint').textContent = r === 'ok' ? 'Файл «' + name + '» сохранён. Впиши номера счетов' + (cv.req ? '' : ', добавь лист «Данные ЮЛ»') + ' и загрузи его на вкладке «Рубли».' : saveMsg(r).replace('«Скачать архив»', 'кнопку ещё раз');
 });
 cvRender();
 
