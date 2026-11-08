@@ -106,6 +106,16 @@ button:disabled{opacity:.45;cursor:not-allowed}
   .row .more{grid-column:2 / -1;grid-row:3;justify-self:start}
 }
 .result h3{margin:0;font-size:16px;font-weight:600}
+.rates{display:flex;flex-direction:column;gap:10px}
+.rate{display:grid;grid-template-columns:minmax(0,1.3fr) 90px minmax(0,1fr);gap:10px;align-items:end}
+.rate .src{grid-column:1 / -1;margin-top:-4px}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table.cv{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+table.cv th{background:var(--accent);color:var(--accent-fg);font-weight:600;text-align:right;padding:9px 12px;white-space:nowrap}
+table.cv td{padding:9px 12px;text-align:right;border-top:1px solid var(--line);white-space:nowrap;vertical-align:top}
+table.cv th:first-child,table.cv td:first-child{text-align:left}
+table.cv td .sub{display:block;font-size:12px;color:var(--muted)}
+@media (max-width:560px){.rate{grid-template-columns:minmax(0,1fr) 80px}.rate .val{grid-column:1 / -1}}
 .result ul{margin:6px 0 0;padding-left:18px} .result li{margin-block:2px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -118,10 +128,59 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <p>Загрузите шаблон счёта и таблицу месяца. Программа соберёт отдельный счёт на каждый город и покажет, где нужна ваша проверка. Файлы обрабатываются в браузере и никуда не отправляются.</p>
   </header>
 
-  <div class="tabs" role="tablist" aria-label="Валюта счетов">
+  <div class="tabs" role="tablist" aria-label="Режим">
     <button role="tab" id="tab-rub" aria-selected="true">Рубли</button>
     <button role="tab" id="tab-kz" aria-selected="false">Для Казахстана</button>
+    <button role="tab" id="tab-cv" aria-selected="false">Конвертер валют</button>
   </div>
+
+  <div id="cv" hidden style="display:flex;flex-direction:column;gap:20px">
+  <section aria-labelledby="h-cv-file">
+    <h2 id="h-cv-file"><span class="n">1</span>Выгрузка в валюте</h2>
+    <div class="drop">
+      <label class="zone data" id="z-cv">
+        <input type="file" id="f-cv" accept=".xlsx">
+        <span class="fname"><span class="pick">Выберите файл</span> или перетащите сюда</span>
+        <span class="state" id="s-cv">Сводный финансовый отчёт из админки, .xlsx</span>
+      </label>
+    </div>
+    <div class="info">
+      <b>Что нужно в файле</b>
+      <ul>
+        <li>Строка с заголовками, колонки «Город» и «Валюта», дальше суммы: «Доход», «Сумма роялти», «Роялти» и другие.</li>
+        <li>В рубли переводятся денежные колонки: доход, роялти, расходы, прибыль, доп. опции. «Ролик» и «СМС» остаются как есть: они и так в рублях.</li>
+        <li>Количество игр, команд и людей не меняется. Строки в рублях переносятся без пересчёта.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-cv-rate">
+    <h2 id="h-cv-rate"><span class="n">2</span>Курс</h2>
+    <div class="params">
+      <div class="field">
+        <label for="cv-date">Дата курса</label>
+        <input type="date" id="cv-date">
+      </div>
+      <div class="field">
+        <span class="lbl">Курс ЦБ на эту дату</span>
+        <div class="inline"><button id="cv-fetch">Обновить курс</button><button id="cv-first">1-е число месяца</button></div>
+      </div>
+    </div>
+    <div id="cv-rate-msg"></div>
+    <div class="rates" id="cv-rates"><div class="empty">Курсы появятся после загрузки выгрузки: по строке на каждую валюту из файла.</div></div>
+  </section>
+
+  <section aria-labelledby="h-cv-out">
+    <h2 id="h-cv-out"><span class="n">3</span>Результат в рублях</h2>
+    <div id="cv-table" class="empty">Здесь появится выгрузка в рублях, по строке на город.</div>
+    <div class="actions">
+      <button class="primary" id="cv-go" disabled>Скачать Excel в рублях</button>
+      <span class="muted small" id="cv-hint">Загрузите выгрузку и укажите курс.</span>
+    </div>
+  </section>
+  </div>
+
+  <div id="inv" style="display:flex;flex-direction:column;gap:20px">
 
   <section aria-labelledby="h-files">
     <h2 id="h-files"><span class="n">1</span>Файлы</h2>
@@ -201,6 +260,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
     </div>
     <div class="result" id="result" hidden></div>
   </section>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -711,12 +771,129 @@ $('#list').addEventListener('change', e => {
 [['tab-rub', false], ['tab-kz', true]].forEach(([id, kz]) => $('#' + id).addEventListener('click', () => {
   state.kz = kz; state.zip = null;
   $('#tab-rub').setAttribute('aria-selected', String(!kz)); $('#tab-kz').setAttribute('aria-selected', String(kz));
+  $('#tab-cv').setAttribute('aria-selected', 'false'); $('#cv').hidden = true; $('#inv').hidden = false;
   $('#kz-note').hidden = !kz; $('#result').hidden = true; render();
 }));
+$('#tab-cv').addEventListener('click', () => {
+  ['tab-rub','tab-kz'].forEach(id => $('#' + id).setAttribute('aria-selected', 'false'));
+  $('#tab-cv').setAttribute('aria-selected', 'true'); $('#inv').hidden = true; $('#cv').hidden = false;
+});
 $('#go').addEventListener('click', generate);
 $('#result').addEventListener('click', async e => {
   if (e.target.id === 'again' && state.zip) $('#save-msg').textContent = saveMsg(await saveFile(state.zip.name, state.zip.bytes, 'application/zip'));
 });
+
+/* ---------- currency converter ---------- */
+const CV_NOMINAL = { KZT:100, UZS:10000, VND:10000, AMD:100, KGS:100, HUF:100, JPY:100, KRW:1000, RSD:100, IDR:10000 };
+const cv = { file:null, head:[], rows:[], ci:-1, cur:-1, money:[], rates:{} };
+const normH = s => String(s ?? '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+const isMoney = h => { const n = normH(h); return !!n && !/количеств|ролик|смс|валют|город|пришло|ожидал|бесплатн/.test(n) && /доход|роялти|расход|прибыл|получено|опци|приз|выручк|сумм/.test(n); };
+const isoFirst = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01'; };
+const ruDate = iso => iso.split('-').reverse().join('.');
+function cvParse(wb){
+  for (const sh of wb.sheets){
+    const hi = sh.rows.findIndex((r, k) => k < 30 && (r || []).some(v => normH(v) === 'город'));
+    if (hi < 0) continue;
+    const head = sh.rows[hi].map(v => v == null ? '' : String(v).trim());
+    const ci = head.findIndex(h => normH(h) === 'город'), cur = head.findIndex(h => normH(h) === 'валюта');
+    if (cur < 0) throw new Error('В файле нет колонки «Валюта»: без неё непонятно, из какой валюты переводить.');
+    const rows = sh.rows.slice(hi + 1).filter(r => r && r[ci] != null && String(r[ci]).trim() && !/^(итого|всего)/i.test(String(r[ci]).trim()));
+    if (!rows.length) throw new Error('В файле нет строк с городами.');
+    return { head, rows, ci, cur, money: head.map((h, k) => k !== ci && k !== cur && isMoney(h) ? k : -1).filter(k => k >= 0) };
+  }
+  throw new Error('В файле не нашлась колонка «Город». Нужен сводный финансовый отчёт из админки.');
+}
+const curOf = r => String(r[cv.cur] ?? 'RUB').trim().toUpperCase() || 'RUB';
+const cvCurs = () => Array.from(new Set(cv.rows.map(curOf))).filter(c => c !== 'RUB');
+function cvK(c){ if (c === 'RUB') return 1; const r = cv.rates[c]; return r && r.val > 0 && r.nom > 0 ? r.val / r.nom : null; }
+function cvRender(){
+  const curs = cvCurs();
+  $('#cv-rates').innerHTML = !cv.rows.length ? '<div class="empty">Курсы появятся после загрузки выгрузки: по строке на каждую валюту из файла.</div>' :
+    !curs.length ? '<div class="empty">Все строки уже в рублях, курс не нужен.</div>' :
+    curs.map(c => { const r = cv.rates[c] || (cv.rates[c] = { nom: CV_NOMINAL[c] || 1, val: 0, src: '' });
+      return '<div class="rate"><div class="field"><span class="lbl">Валюта</span><b style="padding:9px 0">' + esc(c) + '</b></div>' +
+        '<div class="field"><label for="cvn-' + c + '">За</label><input type="number" min="1" step="1" id="cvn-' + c + '" data-cvc="' + c + '" data-f="nom" value="' + r.nom + '"></div>' +
+        '<div class="field val"><label for="cvv-' + c + '">Рублей</label><input type="text" inputmode="decimal" id="cvv-' + c + '" data-cvc="' + c + '" data-f="val" value="' + (r.val ? String(r.val).replace('.', ',') : '') + '" placeholder="0,0000"></div>' +
+        '<span class="small muted src">' + esc(r.src || 'Нажми «Обновить курс» или впиши курс вручную.') + '</span></div>'; }).join('');
+  const missing = curs.filter(c => cvK(c) == null);
+  if (!cv.rows.length){ $('#cv-table').className = 'empty'; $('#cv-table').textContent = 'Здесь появится выгрузка в рублях, по строке на город.'; }
+  else {
+    const show = cv.money.slice(0, 4);
+    $('#cv-table').className = 'scroll';
+    $('#cv-table').innerHTML = '<table class="cv"><tr><th>Город</th><th>Валюта</th><th>Курс за 1</th>' + show.map(k => '<th>' + esc(cv.head[k]) + ', ₽</th>').join('') + '</tr>' +
+      cv.rows.map(r => { const c = curOf(r), k = cvK(c);
+        return '<tr><td>' + esc(r[cv.ci]) + '</td><td>' + esc(c) + '</td><td>' + (c === 'RUB' ? '—' : k == null ? 'нужен курс' : esc(String(round2(k * 10000) / 10000).replace('.', ','))) + '</td>' +
+          show.map(j => { const v = parseNum(r[j]); return '<td>' + (k == null ? '—' : fmtFull(round2(v * k))) + (c === 'RUB' ? '' : '<span class="sub">' + esc(fmtFull(v).replace(/,00$/, '')) + ' ' + esc(c) + '</span>') + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>';
+  }
+  $('#cv-go').disabled = !cv.rows.length || missing.length > 0;
+  $('#cv-hint').textContent = !cv.rows.length ? 'Загрузите выгрузку и укажите курс.' : missing.length ? 'Нужен курс: ' + missing.join(', ') + '.' :
+    'Городов: ' + cv.rows.length + ' · курс на ' + ruDate($('#cv-date').value || isoFirst()) + '.';
+}
+async function cvFetch(){
+  const iso = $('#cv-date').value, msg = $('#cv-rate-msg');
+  if (!iso){ msg.innerHTML = '<div class="note">Выбери дату курса.</div>'; return; }
+  const curs = cvCurs(); if (!curs.length){ msg.innerHTML = ''; return; }
+  msg.innerHTML = '<p class="muted small" style="margin:0">Загружаю курс ЦБ…</p>';
+  const base = new Date(iso + 'T12:00:00');
+  for (let i = 0; i <= 10; i++){
+    const d = new Date(base.getTime() - i * 86400000);
+    const url = 'https://www.cbr-xml-daily.ru/archive/' + d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/daily_json.js';
+    try {
+      const res = await fetch(url); if (!res.ok) continue;
+      const j = await res.json(), miss = [];
+      const on = d.toISOString().slice(0, 10) === iso ? '' : ' (последний курс до этой даты, ' + ruDate(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')) + ')';
+      curs.forEach(c => { const v = j.Valute && j.Valute[c]; if (v) cv.rates[c] = { nom: v.Nominal, val: v.Value, src: 'ЦБ на ' + ruDate(iso) + on }; else miss.push(c); });
+      msg.innerHTML = miss.length ? '<div class="note">ЦБ не публикует курс для ' + esc(miss.join(', ')) + '. Впиши его вручную.</div>' : '';
+      cvRender(); return;
+    } catch (e) { break; }
+  }
+  msg.innerHTML = '<div class="note">Курс не загрузился. Впиши его вручную: <a href="https://www.cbr.ru/currency_base/daily/?UniDbQuery.Posted=True&UniDbQuery.To=' + ruDate(iso) + '" target="_blank" rel="noopener" style="color:inherit">курсы ЦБ на ' + ruDate(iso) + '</a>.</div>';
+}
+async function cvFile(file){
+  if (!file) return;
+  setZone('cv', file, 'Читаю…');
+  try {
+    Object.assign(cv, cvParse(await readBook(file)), { file: file.name, rates: {} });
+    const curs = cvCurs();
+    setZone('cv', file, 'Городов: ' + cv.rows.length + (curs.length ? ' · валюты: ' + curs.join(', ') : ' · всё в рублях'), 'good');
+    cvRender(); if (curs.length) cvFetch();
+  } catch (e) { Object.assign(cv, { rows: [], head: [], money: [] }); setZone('cv', file, e.message || 'Не удалось прочитать файл.', 'err'); cvRender(); }
+}
+(() => {
+  const z = $('#z-cv'), inp = $('#f-cv');
+  inp.addEventListener('change', () => { cvFile(inp.files[0]); inp.value = ''; });
+  ['dragenter','dragover'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add('over'); }));
+  ['dragleave','drop'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove('over'); }));
+  z.addEventListener('drop', e => cvFile(e.dataTransfer.files[0]));
+})();
+$('#cv-date').value = isoFirst();
+$('#cv-first').addEventListener('click', () => { $('#cv-date').value = isoFirst(); cvFetch(); });
+$('#cv-fetch').addEventListener('click', cvFetch);
+$('#cv-date').addEventListener('change', () => { cvRender(); });
+$('#cv-rates').addEventListener('change', e => {
+  const c = e.target.dataset.cvc; if (!c) return;
+  const r = cv.rates[c]; r[e.target.dataset.f] = parseNum(e.target.value); r.src = 'вписан вручную'; cvRender();
+});
+$('#cv-go').addEventListener('click', async () => {
+  const iso = $('#cv-date').value || isoFirst(), extra = ['Исходная валюта', 'Курс за 1', 'Дата курса'];
+  const table = [cv.head.concat(extra)];
+  cv.rows.forEach(r => {
+    const c = curOf(r), k = cvK(c), out = cv.head.map((h, j) => {
+      const v = r[j];
+      if (j === cv.cur) return 'RUB';
+      if (cv.money.includes(j)) return round2(parseNum(v) * k);
+      if (v == null) return '';
+      const n = typeof v === 'number' ? v : (/^-?\d+([.,]\d+)?$/.test(String(v).trim()) ? parseNum(v) : v);
+      return n;
+    });
+    table.push(out.concat([c, c === 'RUB' ? 1 : round2(k * 10000) / 10000, ruDate(iso)]));
+  });
+  const name = safeName((cv.file || 'Выгрузка').replace(/\.xlsx$/i, '') + ' в рублях ' + ruDate(iso)) + '.xlsx';
+  const bytes = await buildXlsx('Sheet1', table, table[0].map((h, i) => i === cv.ci ? 22 : 15));
+  const r = await saveFile(name, bytes, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  $('#cv-hint').textContent = r === 'ok' ? 'Файл «' + name + '» сохранён.' : saveMsg(r).replace('«Скачать архив»', '«Скачать Excel в рублях»');
+});
+cvRender();
 
 /* ---------- start ---------- */
 $('#month').innerHTML = MONTHS.map((m, i) => '<option value="' + i + '">' + m + '</option>').join('');
