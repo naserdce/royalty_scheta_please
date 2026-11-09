@@ -439,7 +439,8 @@ async function buildDocx(city){
 
 /* ---------- Excel ---------- */
 const normHead = v => String(v ?? '').toLowerCase().replace(/ё/g,'е').replace(/[\s\u00A0]+/g,'');
-const normCity = v => String(v ?? '').toLowerCase().replace(/ё/g,'е').replace(/[\s\u00A0]+/g,' ').trim();
+const stripRate = v => String(v ?? '').replace(/[\s\u00A0]+\d+([.,]\d+)?\s*%\s*$/, '');
+const normCity = v => stripRate(v).toLowerCase().replace(/ё/g,'е').replace(/[\s\u00A0]+/g,' ').trim();
 const clean = v => String(v ?? '').replace(/[\s\u00A0]+/g,' ').trim();
 const xdoc = str => new DOMParser().parseFromString(str, 'application/xml');
 const els = (node, name) => Array.from(node.getElementsByTagNameNS('*', name));
@@ -533,7 +534,7 @@ function parseCities(wb){
   });
   const cities = [];
   for (const r of rows.slice(h + 1)){
-    const city = clean(r && r[iCity]); if (!city || normCity(city) === 'город') continue;
+    const city = clean(stripRate(r && r[iCity])); if (!city || normCity(city) === 'город') continue;
     const amounts = {}; cols.forEach(c => { amounts[c.key] = round2(parseNum(r[c.idx])); });
     cities.push({ city, number: clean(r[iNum]), royalty: round2(parseNum(r[iRoy])), total: round2(parseNum(r[iTot])),
       amounts, company:'', companyEdited:false, included:false, touched:false });
